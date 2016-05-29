@@ -1,7 +1,7 @@
 package gss
 
 /*
-#cgo pkg-config: krb5-gssapi
+#cgo LDFLAGS: -lgssapi_krb5 -lkrb5 -lcom_err -lkrb5support -lk5crypto -lgssrpc -ldl -lz -lresolv -lkeyutils -lpthread
 #include <sys/types.h>
 #include <stdlib.h>
 #include <string.h>
