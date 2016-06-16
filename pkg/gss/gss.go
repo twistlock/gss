@@ -209,7 +209,8 @@ var (
 
 	NT_krb5_name      = coidToOid(*C.gss_nt_krb5_name)
 	NT_krb5_principal = coidToOid(*C.gss_nt_krb5_principal)
-	//Krb5_gss_oid_array = coidToOid(C.krb5_gss_oid_array)
+
+//Krb5_gss_oid_array = coidToOid(C.krb5_gss_oid_array)
 )
 
 /* CredHandle holds a reference to client or server credentials, or delegated credentials.  It should be released using gss.ReleaseCred() when it's no longer needed. */
@@ -237,7 +238,7 @@ type Flags struct {
 
 /* bytesToBuffer populates a gss_buffer_t with a borrowed reference to the contents of the slice. */
 func bytesToBuffer(data []byte) (cdesc C.gss_buffer_desc) {
-	value := unsafe.Pointer(&data[0])
+	value := unsafe.Pointer(C.CString(bytes.NewBuffer(data).String()))
 	length := C.size_t(len(data))
 
 	cdesc.value = value
@@ -457,6 +458,7 @@ func bindingsToCBindings(bindings *ChannelBindings) (cbindings C.gss_channel_bin
 		return nil
 	}
 	cbindings.application_data = bytesToBuffer(bindings.ApplicationData)
+	defer C.free(cbindings.application_data.value)
 	return
 }
 
@@ -667,6 +669,7 @@ func InitSecContext(claimantCredHandle CredHandle, contextHandle *ContextHandle,
 
 	if inputToken != nil {
 		itoken = bytesToBuffer(inputToken)
+		defer C.free(itoken.value)
 	}
 
 	major = C.gss_init_sec_context(&minor, handle, &ctx, name, desired, flags, lifetime, bindings, &itoken, &actual, &otoken, &flags, &lifetime)
@@ -707,8 +710,8 @@ func AcceptSecContext(acceptorCredHandle CredHandle, contextHandle *ContextHandl
 
 	if inputToken != nil {
 		itoken = bytesToBuffer(inputToken)
+		defer C.free(itoken.value)
 	}
-
 	major = C.gss_accept_sec_context(&minor, &ctx, handle, &itoken, bindings, &name, &actual, &otoken, &flags, &lifetime, &dhandle)
 	*contextHandle = ContextHandle(ctx)
 	majorStatus = uint32(major)
@@ -759,6 +762,7 @@ func ProcessContextToken(contextHandle ContextHandle, contextToken []byte) (majo
 
 	if contextToken != nil {
 		token = bytesToBuffer(contextToken)
+		defer C.free(token.value)
 	}
 
 	major = C.gss_process_context_token(&minor, handle, &token)
@@ -870,6 +874,7 @@ func ExportSecContext(contextHandle ContextHandle) (majorStatus, minorStatus uin
 /* ImportSecContext() deserializes all state data related to an established security context and reconstructs it.  The returned contextHandle can be used immediately, and should eventually be freed using gss.DeleteSecContext(). */
 func ImportSecContext(interprocessToken []byte) (majorStatus, minorStatus uint32, contextHandle ContextHandle) {
 	token := bytesToBuffer(interprocessToken)
+	defer C.free(token.value)
 	var major, minor C.OM_uint32
 	var handle C.gss_ctx_id_t
 
@@ -889,6 +894,7 @@ func GetMIC(contextHandle ContextHandle, qopReq uint32, message []byte) (majorSt
 	var major, minor C.OM_uint32
 
 	msg = bytesToBuffer(message)
+	defer C.free(msg.value)
 
 	major = C.gss_get_mic(&minor, handle, qop, &msg, &mic)
 
@@ -906,6 +912,8 @@ func VerifyMIC(contextHandle ContextHandle, message, perMessageToken []byte) (ma
 	handle := C.gss_ctx_id_t(contextHandle)
 	msg := bytesToBuffer(message)
 	mic := bytesToBuffer(perMessageToken)
+	defer C.free(msg.value)
+	defer C.free(mic.value)
 	var major, minor C.OM_uint32
 	var qop C.gss_qop_t
 
@@ -929,6 +937,7 @@ func Wrap(contextHandle ContextHandle, confReq bool, qopReq uint32, inputMessage
 		conf = 1
 	}
 	msg = bytesToBuffer(inputMessage)
+	defer C.free(msg.value)
 
 	major = C.gss_wrap(&minor, handle, conf, qop, &msg, &conf, &wrapped)
 
@@ -946,6 +955,7 @@ func Wrap(contextHandle ContextHandle, confReq bool, qopReq uint32, inputMessage
 func Unwrap(contextHandle ContextHandle, inputMessage []byte) (majorStatus, minorStatus uint32, confState bool, qopState uint32, outputMessage []byte) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	wrapped := bytesToBuffer(inputMessage)
+	defer C.free(wrapped.value)
 	var major, minor C.OM_uint32
 	var msg C.gss_buffer_desc
 	var conf C.int
@@ -1153,6 +1163,7 @@ func PseudoRandom(contextHandle ContextHandle, prfKey int, prfIn []byte, desired
 	handle := C.gss_ctx_id_t(contextHandle)
 	pkey := C.int(prfKey)
 	pin := bytesToBuffer(prfIn)
+	defer C.free(pin.value)
 	desired := C.ssize_t(desiredOutputLen)
 	var major, minor C.OM_uint32
 	var pout C.gss_buffer_desc
@@ -1322,6 +1333,7 @@ func AuthorizeLocalname(name, user InternalName) (majorStatus, minorStatus uint3
 func AcquireCredWithPassword(desiredName InternalName, password []byte, timeReq uint32, desiredMechs []asn1.ObjectIdentifier, credUsage uint32) (majorStatus, minorStatus uint32, credHandle CredHandle, actualMechs []asn1.ObjectIdentifier, timeRec uint32) {
 	name := C.gss_name_t(desiredName)
 	pwd := bytesToBuffer(password)
+	defer C.free(pwd.value)
 	time := C.OM_uint32(timeReq)
 	dmechs := oidsToCOidSet(desiredMechs)
 	usage := C.gss_cred_usage_t(credUsage)
@@ -1407,6 +1419,7 @@ func SetSecContextOption(contextHandle *ContextHandle, desiredObject asn1.Object
 	handle := C.gss_ctx_id_t(*contextHandle)
 	obj := oidToCOid(desiredObject)
 	val := bytesToBuffer(value)
+	defer C.free(val.value)
 	var major, minor C.OM_uint32
 
 	major = C.gss_set_sec_context_option(&minor, &handle, obj, &val)
@@ -1422,6 +1435,7 @@ func SetCredOption(credHandle *CredHandle, desiredObject asn1.ObjectIdentifier, 
 	handle := C.gss_cred_id_t(*credHandle)
 	obj := oidToCOid(desiredObject)
 	val := bytesToBuffer(value)
+	defer C.free(val.value)
 	var major, minor C.OM_uint32
 
 	major = C.gss_set_cred_option(&minor, &handle, obj, &val)
@@ -1437,6 +1451,7 @@ func MechInvoke(desiredMech, desiredObject asn1.ObjectIdentifier, value *[]byte)
 	mech := oidToCOid(desiredMech)
 	obj := oidToCOid(desiredObject)
 	val := bytesToBuffer(*value)
+	defer C.free(val.value)
 	var major, minor C.OM_uint32
 
 	major = C.gssspi_mech_invoke(&minor, mech, obj, &val)
@@ -1452,6 +1467,7 @@ func MechInvoke(desiredMech, desiredObject asn1.ObjectIdentifier, value *[]byte)
 func CompleteAuthToken(contextHandle ContextHandle, inputMessage []byte) (majorStatus, minorStatus uint32) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	msg := bytesToBuffer(inputMessage)
+
 	var major, minor C.OM_uint32
 
 	major = C.gss_complete_auth_token(&minor, handle, &msg)
@@ -1585,6 +1601,7 @@ func SetNameAttribute(name InternalName, complete bool, attribute string, value 
 	var comp C.int
 	attr := stringToBuffer(attribute)
 	val := bytesToBuffer(value)
+	defer C.free(val.value)
 	var major, minor C.OM_uint32
 
 	if complete {
@@ -1727,6 +1744,7 @@ func ExportCred(credHandle CredHandle) (majorStatus, minorStatus uint32, token [
 /* ImportCred() constructs a credential handle using the contents of the passed-in token.  The returned credHandle should eventually be freed using gss.ReleaseCred(). */
 func ImportCred(token []byte) (majorStatus, minorStatus uint32, credHandle CredHandle) {
 	buffer := bytesToBuffer(token)
+	defer C.free(buffer.value)
 	var major, minor C.OM_uint32
 	var handle C.gss_cred_id_t
 

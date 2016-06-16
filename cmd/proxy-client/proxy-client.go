@@ -10,8 +10,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/nalind/gss/pkg/gss/misc"
-	"github.com/nalind/gss/pkg/gss/proxy"
+	"github.com/twistlock/gss/pkg/gss/misc"
+	"github.com/twistlock/gss/pkg/gss/proxy"
 )
 
 func connectOnce(pconn *net.Conn, pcc *proxy.CallCtx, host string, port int, service string, mcount int, quiet bool, plain []byte, v1, spnego bool, nmech *asn1.ObjectIdentifier, mech asn1.ObjectIdentifier, delegate, seq, noreplay, nomutual, noauth, nowrap, noenc, nomic bool) {

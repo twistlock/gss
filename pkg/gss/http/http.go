@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/nalind/gss/pkg/gss"
+	"github.com/twistlock/gss/pkg/gss"
 )
 
 type NegotiateRoundTripper struct {
